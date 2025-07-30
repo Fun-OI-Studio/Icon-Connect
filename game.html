@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <title>环保连连看游戏</title>
+    <!-- 引入Font Awesome图标库 -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+	<link href="https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&family=ZCOOL+QingKe+HuangYou&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background-color: #f0f0f0;
+        }
+        #controls {
+            margin: 20px 0;
+            text-align: center;
+        }
+        input, button {
+            margin: 0 10px;
+            padding: 5px;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        #timebar {
+            height: 30px;
+            width: 600px;
+            background-color: #ddd;
+            margin-bottom: 20px;
+            position: relative;
+        }
+        #timebar-inner {
+            height: 100%;
+            width: 100%;
+            background-color: green;
+            transition: width 1s linear;
+        }
+        #timeleft {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-weight: bold;
+            z-index: 1;
+        }
+        #container {
+            background-color: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        table {
+            border-collapse: collapse;
+        }
+        td {
+            border: 1px solid #ddd;
+            text-align: center;
+            vertical-align: middle;
+            cursor: pointer;
+            transition: background-color 0.3s;
+            width: 40px;
+            height: 40px;
+            font-family: "Font Awesome 5 Free";
+            font-weight: 900;
+        }
+        td:hover {
+            background-color: #f5f5f5;
+        }
+        td i {
+            font-size: 24px;
+        }
+		
+    </style>
+</head>
+<body>
+    <div id="controls">
+        行数<input id="setrow" type="number" value="9" min="2" max="20">
+        列数<input id="setcol" type="number" value="16" min="2" max="40">
+        图片数<input id="setpic" type="number" value="12" min="1" max="26">
+        时间<input id="settime" type="number" value="120" min="10" max="1200">秒
+        <button onclick="SetupGame();">设置</button>
+        <button onclick="StartGame();" id="startButton">开始</button>
+		<button onclick="showConfirmation()">回到主界面</button>
+    </div>
+    <div id="timebar">
+        <div id="timebar-inner"></div>
+        <div id="timeleft"></div>
+    </div>
+    <div id="container"></div>
+ 
+    <script>
+    // 垃圾/回收相关图标配置
+    const icons = [
+        'fa-trash',         'fa-recycle',       'fa-trash-alt',    'fa-dumpster',
+        'fa-battery-full',  'fa-battery-half',  'fa-battery-empty','fa-plug',
+        'fa-lightbulb',     'fa-newspaper',     'fa-wine-bottle',  'fa-glass-martini-alt',
+        'fa-box',           'fa-box-open',      'fa-pallet',       'fa-couch',
+        'fa-tv',            'fa-mobile-alt',    'fa-laptop',       'fa-keyboard',
+        'fa-toilet-paper',  'fa-paper-plane',   'fa-bottle-water', 'fa-cannabis'
+    ];
+ 
+    // 图标配置（仅定义类型）
+    const iconClasses = [
+        'fa-trash',         'fa-recycle',       'fa-trash-alt',    'fa-dumpster',
+        'fa-battery-full',  'fa-battery-half',  'fa-battery-empty','fa-plug',
+        'fa-lightbulb',     'fa-newspaper',     'fa-wine-bottle',  'fa-glass-martini-alt'
+    ];
+    
+    let currentColor = ""; // 全局当前颜色
+    
+    let RowMax = 11;
+    let ColMax = 18;
+    let PicMax = 12;
+    let TimeMax = 120;
+    
+    let st;
+    let TmpStr = "";
+    let TmpObj = null;
+    let TmpTime = 0;
+    let TmpInt = 0;
+    let gameMatrix;
+    let gameStarted = false;
+ 
+    let P = new Array(4);
+    for(let i=0; i<4; i++) P[i] = {x:0, y:0};
+ 
+    function SetupGame(){
+        clearInterval(st);
+        
+        // 参数校验
+        const rowVal = Math.min(20, Math.max(2, parseInt(document.getElementById("setrow").value)));
+        const colVal = Math.min(40, Math.max(2, parseInt(document.getElementById("setcol").value)));
+        RowMax = rowVal + 2;
+        ColMax = colVal + 2;
+ 
+        // 检查行数与列数的乘积是否为偶数
+        if ((rowVal * colVal) % 2 !== 0) {
+            alert("行数和列数的乘积必须为偶数，请调整行数或列数。");
+            return; // 终止函数执行
+        }
+        
+        PicMax = Math.min(icons.length, Math.max(1, 
+            parseInt(document.getElementById("setpic").value)));
+        
+        TimeMax = Math.min(1200, Math.max(10, 
+            parseInt(document.getElementById("settime").value)));
+ 
+        generateNewGame();
+        
+        document.getElementById("timeleft").innerHTML = "点击开始按钮开始游戏";
+        document.getElementById("timebar-inner").style.width = "100%";
+        document.getElementById("timebar-inner").style.backgroundColor = "#4CAF50";
+        document.getElementById("startButton").disabled = false;
+        gameStarted = false;
+    }
+ 
+    function getRandomColor() {
+        return `hsl(${Math.random() * 360}, 70%, 60%)`; // 随机HSL颜色
+    }
+ 
+    function generateNewGame() {
+        gameMatrix = Array(RowMax).fill().map(() => Array(ColMax).fill(0));
+        
+        // 生成全局统一颜色
+        currentColor = `hsl(${Math.random()*360}, 70%, 60%)`; // 随机HSL颜色
+    
+        // 生成配对逻辑（仅存储图标类型索引）
+        const totalCells = (RowMax-2)*(ColMax-2);
+        const pairs = [];
+        for(let i=0; i<totalCells/2; i++){
+            const type = i % PicMax; // 确保成对生成
+            pairs.push(type, type);
+        }
+        
+        // 洗牌算法
+        for(let i = pairs.length -1; i > 0; i--){
+            const j = Math.floor(Math.random() * (i+1));
+            [pairs[i], pairs[j]] = [pairs[j], pairs[i]];
+        }
+    
+        // 构建表格（所有图标使用相同颜色）
+        TmpStr = "<table>";
+        let pairIndex = 0;
+        for(let i=0; i<RowMax; i++){
+            TmpStr += "<tr>";
+            for(let j=0; j<ColMax; j++){
+                TmpStr += `<td onclick="CheckP(this,${i},${j});">`;
+                
+                if(i === 0 || j === 0 || i === RowMax-1 || j === ColMax-1){
+                    gameMatrix[i][j] = null; // 边界保持为空
+                } else {
+                    const type = pairs[pairIndex++];
+                    gameMatrix[i][j] = type; // 存储类型索引
+                    // 所有图标使用同一颜色
+                    TmpStr += `<i class="fas ${iconClasses[type]}" 
+                               style="color:${currentColor}"></i>`;
+                }
+                TmpStr += "</td>";
+            }
+            TmpStr += "</tr>";
+        }
+        TmpStr += "</table>";
+        document.getElementById("container").innerHTML = TmpStr;
+        TmpInt = totalCells/2;
+    }
+ 
+    // 开始游戏
+    function StartGame(){
+ 
+        gameStarted = true; // 标记游戏已开始
+        TmpTime = TimeMax; // 重置时间
+        document.getElementById("timeleft").innerHTML = TmpTime; // 显示剩余时间
+        document.getElementById("timebar-inner").style.width = "100%";
+        document.getElementById("timebar-inner").style.backgroundColor = "green";
+ 
+        st = setInterval(ShowTime, 1000); // 开始倒计时
+ 
+        // 禁用"开始"按钮
+        document.getElementById("startButton").disabled = true;
+    }
+ 
+    // X方向连线。（有起点，无终点）
+    function LineX(x, y, xt){
+        for(let i=x; i!=xt; (x<xt? i++: i--) ){
+            if(gameMatrix[i][y]){
+                return false;
+            }
+        }
+        return true;
+    }
+ 
+    // Y方向连线。（有起点，无终点）
+    function LineY(x, y, yt){
+        for(let i=y; i!=yt; (y<yt? i++: i--) ){
+            if(gameMatrix[x][i]){
+                return false;
+            }
+        }    
+        return true;
+    }
+ 
+    // 2个点被3条线连接
+    function LinkP(P1,P2){
+        // P1在P2下方，交换P1、P2
+        if(P1.x>P2.x){
+            [P1, P2] = [P2, P1];
+        }
+        // P1下方1点（x+1）先横向再纵向是否可连接。（因为起点P1不为空，所以检测其下方一点）
+        if( LineX((P1.x+1), P1.y, P2.x) && LineY(P2.x, P1.y, P2.y) ) return true;
+        // P1先向上侧连接，再检测该点再横向再纵向是否可连接P2。
+        for(let j=(P1.y-1); j>=0; j--){
+            if(gameMatrix[P1.x][j]) break;
+            if( LineX((P1.x+1), j, P2.x) && LineY(P2.x, j, P2.y) ) return true;
+        }
+        // P1先向下侧连接，再检测该点再横向再纵向是否可连接P2。
+        for(let j=(P1.y+1); j<ColMax; j++){
+            if(gameMatrix[P1.x][j]) break;
+            if( LineX((P1.x+1), j, P2.x) && LineY(P2.x, j, P2.y) ) return true;
+        }
+ 
+        // P1在P2左侧，交换P1、P2
+        if(P1.y>P2.y){
+            [P1, P2] = [P2, P1];
+        }
+        if( LineY(P1.x, (P1.y+1), P2.y) && LineX(P1.x, P2.y, P2.x) ) return true;
+        for(let j=(P1.x-1); j>=0; j--){
+            if(gameMatrix[j][P1.y]) break;
+            if( LineY(j, (P1.y+1), P2.y) && LineX(j, P2.y, P2.x) ) return true;
+        }
+        for(let j=(P1.x+1); j<RowMax; j++){
+            if(gameMatrix[j][P1.y]) break;
+            if( LineY(j, (P1.y+1), P2.y) && LineX(j, P2.y, P2.x) ) return true;
+        }
+        return false;
+    }
+ 
+    // 单击检测该点（仅需比较类型）
+    function CheckP(o,x,y){
+        if (!gameStarted) return;
+    
+        if(gameMatrix[x][y] !== null){ 
+            if(null==TmpObj){ 
+                TmpObj = o;
+                TmpObj.style.border = "2px solid blue";
+                P[0].x = x;
+                P[0].y = y;
+            }
+            else if(o!=TmpObj){
+                TmpObj.style.border = "";
+                P[1].x = x;
+                P[1].y = y;
+                
+                // 仅比较类型索引
+                if(gameMatrix[P[0].x][P[0].y] === gameMatrix[P[1].x][P[1].y]){
+                    if(LinkP(P[0],P[1])){
+                        gameMatrix[P[0].x][P[0].y] = null;
+                        gameMatrix[P[1].x][P[1].y] = null;
+                        TmpObj.innerHTML = "";
+                        o.innerHTML = "";
+                        TmpTime++;
+                        
+                        TmpInt--;
+                        if(!TmpInt){
+                            clearInterval(st);
+                            document.getElementById("timeleft").innerHTML = "";
+                            document.getElementById("timebar-inner").style.backgroundColor = "white";
+                            alert("恭喜完成！");
+                            document.getElementById("startButton").disabled = false;
+                            gameStarted = false;
+                        }
+                    }
+                }
+                TmpObj = null;
+            }
+        } else {
+            if(TmpObj) TmpObj.style.border = "";
+            TmpObj = null;
+        }
+    }
+ 
+    function ShowTime(){
+        TmpTime--; // 时间减1
+        // 更新时间显示
+        document.getElementById("timeleft").innerHTML = TmpTime;
+        let percentage = Math.floor(100*TmpTime/TimeMax);
+        document.getElementById("timebar-inner").style.width = percentage + "%";
+        if(percentage <= 25){
+            document.getElementById("timebar-inner").style.backgroundColor = "red";
+        }
+        else if(percentage <= 50){
+            document.getElementById("timebar-inner").style.backgroundColor = "yellow";
+        }
+ 
+        if(!TmpTime){ // 剩余时间为0
+            clearInterval(st); // 清除倒计时
+            document.getElementById("timeleft").innerHTML = "";
+            document.getElementById("timebar-inner").style.backgroundColor = "white";
+            alert("时间到！游戏结束");
+            // 启用"开始"按钮
+            document.getElementById("startButton").disabled = false;
+            gameStarted = false; // 重置游戏状态
+        }
+    }
+ 
+    // 页面加载完成后，显示初始提示信息
+    window.onload = function() {
+        document.getElementById("timeleft").innerHTML = "请设置游戏参数并点击设置按钮";
+        document.getElementById("timebar-inner").style.backgroundColor = "#ddd";
+        document.getElementById("startButton").disabled = true;
+    }
+	function showConfirmation() {
+			    if(confirm("确认要返回？没有完成的游戏将会丢失。")) {
+			        window.location.href = 'index.html';
+			    }
+			}
+    </script>
+</body>
+</html>
